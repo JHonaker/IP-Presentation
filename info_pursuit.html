@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title></title>
+<meta name="author" content="(John Honaker)"/>
+<style type="text/css">
+.underline { text-decoration: underline; }
+</style>
+<link rel="stylesheet" href="http://cdn.jsdelivr.net/reveal.js/3.0.0/css/reveal.css"/>
+
+<link rel="stylesheet" href="http://cdn.jsdelivr.net/reveal.js/3.0.0/css/theme/black.css" id="theme"/>
+
+<link rel="stylesheet" href="pres.css"/>
+
+<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+<script>
+    if( window.location.search.match( /print-pdf/gi ) ) {
+        var link = document.createElement( 'link' );
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = 'http://cdn.jsdelivr.net/reveal.js/3.0.0/css/print/pdf.css';
+        document.getElementsByTagName( 'head' )[0].appendChild( link );
+    }
+</script>
+<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+
+<section>
+<section id="slide-org32fe3c7">
+<h2 id="org32fe3c7">Information Pursuit</h2>
+<p style="text-align:center">
+A Bayesian Framework for Sequential Scene Parsing
+</p>
+<p style="text-align:center">
+by Jahngiri et al.
+</p>
+
+</section>
+<section id="slide-orge10f8dc">
+<h3 id="orge10f8dc">Overall Goal</h3>
+<p>
+Develop a goal for scene parsing that incorporates expected contextual information during object classification
+</p>
+
+</section>
+</section>
+<section>
+<section id="slide-org7263e07">
+<h2 id="org7263e07">The Problem</h2>
+<p>
+There is a lot of discarded information that is naturally modelled by a Bayesian framework with prior information.
+</p>
+
+</section>
+<section id="slide-orgb56d667">
+<h3 id="orgb56d667">Dining Tables</h3>
+<p>
+For instance, consider a dining table. There are several collections of objects that occur together and have regular patterns to their relationship:
+</p>
+
+<ul>
+<li>Place settings often include a plate, fork, knife, spoon, and glass</li>
+<li>The utinsels are more often locally parallel to one another than in some random configuration</li>
+
+</ul>
+
+</section>
+<section id="slide-orgbb80402">
+<h3 id="orgbb80402">Benefits of Contextual Information</h3>
+<ul>
+<li>Can help recognize items that we would expect, but may be in strange configurations</li>
+<li>Helps reduce inconsistencies and provides more coherent interpretations</li>
+
+</ul>
+
+</section>
+</section>
+<section>
+<section id="slide-orge8dbc6b">
+<h2 id="orge8dbc6b">Information Pursuit</h2>
+<p>
+The method is a hybrid of a learning-based and model-based approach.
+</p>
+
+<p>
+Images patches are parsed using DNNs which output a variety of classifiers. We use these classifiers to build a (Dirichlet) model to look at the posterior distribution of the classifiers after considering the prior information.
+</p>
+
+</section>
+<section id="slide-org0dabfe1">
+<h3 id="org0dabfe1">Intuitive Approach</h3>
+<p>
+The Information Pursuit strategy can be intuitively thought of as a more complex analgoue of the game <i>20 Questions</i>.
+</p>
+
+<p>
+The goal of the strategy is to sequentially query image patches in an order that results in a large decrease of (Shannon) entropy while balancing the likelihood that the query can be successfully answered.
+</p>
+
+</section>
+<section id="slide-org32a71c0">
+<h4 id="org32a71c0">Example Query</h4>
+<p>
+In <i>20 Questions</i> I might ask you if you the person under consideration is Male/Female first, because it leads to a large reduction in the possible classes while being simultaneously easy to answer accurately.
+</p>
+
+<p>
+I could also ask you if they were born in September. If I knew the birthdates of a number of celebrities, this would be helpful. However, it is highly unlikely that the person answer the questions would know the answer.
+</p>
+
+</section>
+</section>
+<section>
+<section id="slide-org083b192">
+<h2 id="org083b192">Terminology</h2>
+<p>
+The goal is to reconstruct as much information about \(Z \in \mathcal{Z}\) from the observation of \(I\).
+</p>
+
+<ul>
+<li>\(\mathcal{Z}\) - The set of scene interpretations</li>
+<li>\(I\) - a 2D image of the scene</li>
+<li>\(W\) - Other, typically unobserved variables, such as the camera's parameters</li>
+
+</ul>
+
+
+</section>
+<section id="slide-orgc701a7f">
+<h3 id="orgc701a7f">Queries</h3>
+<p>
+Information about \(Z\) is supplied by noisy queries from the specified set of queries, \(\mathcal{Q}\). \(Y_q, q \in \mathcal{Q}\) is the answer to these queries, and is determined by \(Z\) and \(W\), \(Y_q = f_q \left( Z, W \right)\).
+</p>
+
+<p>
+\(Y_q\) provides a small amount of information about \(Z\), and is referred to as an "annobit".
+</p>
+
+</section>
+<section id="slide-org8ba2390">
+<h3 id="org8ba2390">Examples of Annobits</h3>
+<ul>
+<li>Scene Context - Full scene labels such as "indoor", "outdoor", "street". Not used in this paper since all examples are of indoor table settings.</li>
+<li>Part-of Descriptors - Indicate whether or not one image region is a subset of another, e.g. whether an image patch is a part of a table.</li>
+<li>Existence - Indicate the presence or absence of object instances inside the region. The most used example in this paper.</li>
+
+</ul>
+
+</section>
+<section id="slide-orgd066ee1">
+<h3 id="orgd066ee1">Classifiers</h3>
+<p>
+The states of the annobits are progressively estimated from a matched family of image-based predictors, \(X_q = h_q \left( I \right)\). We also assume that \(Y_\mathcal{Q}\) is sufficient for \(X_\mathcal{Q}\), in the sense that \[P \left(X_\mathcal{Q} | Z, W \right) = P \left( X_\mathcal{Q} | Y_\mathcal{Q} \right)\]
+</p>
+
+</section>
+</section>
+<section>
+<section id="slide-org44b0495">
+<h2 id="org44b0495">IP Strategy</h2>
+<p>
+Let \((q_1, ..., q_k)\) be an ordered sequence of the first k distinct queries with answers \((x_1, ..., x_k)\). The event, \[\mathbf{E}_k = \left\{ X_{q_1} = x_1, ..., X_{q_k} = x_k \right\}.\]
+</p>
+
+<p>
+The IP strategy is defined recursively: \[q_1 = argmax_{q \in \mathcal{Q}} \mathcal{I} (X_q, Y_\mathcal{Q}), q_k = argmax_{q \in \mathcal{Q}} \mathcal{I} (X_q, Y_\mathcal{Q} | \mathbf{E}_{k-1}).\]
+</p>
+
+<p>
+Where \(\mathcal{I}\) is the mutual information determined by the joint distribution of \(X_q\) and \(Y_\mathcal{Q}\).
+</p>
+
+</section>
+<section id="slide-org790ab6c">
+<h3 id="org790ab6c">Selection Criteria</h3>
+<p>
+\[\mathcal{I} (X_q, Y_\mathcal{Q} | \mathbf{E}_{k-1}) = H(X_q | \mathbf{E}_{k-1}) - H(X_q | Y_\mathcal{Q}, \mathbf{E}_{k-1})\]
+</p>
+
+<p>
+This implies the next question should be chosen such that:
+</p>
+<ol>
+<li>\(H(X_q | \mathbf{E}_{k-1})\) is large, so that its answer is as unpredictable as possible given the current evidence.</li>
+<li>\(H(X_q | Y_\mathcal{Q}, \mathbf{E}_{k-1})\) is small, so that \(X_q\) is predicatble given the ground truth (i.e., \(X_q\) is a "good" classifier).</li>
+
+</ol>
+
+<p>
+The two criteria are balanced though, so one could accept a relatively poor classifier if it is highly unpredictable.
+</p>
+
+</section>
+<section id="slide-org8879988">
+<h3 id="org8879988">Annocells</h3>
+<p>
+The image is chopped into several hierarchical layers into chunks called annocells. Each cell is given its own index and associated set of annobits and classifiers.
+</p>
+
+</section>
+<section id="slide-org146d908">
+<h3 id="org146d908">Annocells</h3>
+
+<div class="figure">
+<p><img src="./annocells.png" alt="annocells.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org5163ac7">
+<h3 id="org5163ac7">Prior Model</h3>
+<p>
+The scene model, \(P(Z|S)\), is conditioned on \(S\), the projective reference plane for the 3D table representation in the image plane. The representative plane is partioned into small cells (5cm by 5cm) and the distribution of \(Z_i = (C_i, L_i)\), class and location, is discretized on this grid. The discretized version of \(Z_{j,c}\) is equal to 1 iff an object of category c is centered in cell j.
+</p>
+
+</section>
+<section id="slide-org0b7c7d9">
+<h3 id="org0b7c7d9">Discretized Grid</h3>
+
+<div class="figure">
+<p><img src="./tablemesh.png" alt="tablemesh.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org9468c05">
+<h3 id="org9468c05">Scene Model Distribution</h3>
+<p>
+The scene model follows a Gibbs distribution, \[p(z) \; \alpha \; exp(\mathbf{\lambda} \phi (z)),\] where \(\phi(z)\) represents two types of features:
+</p>
+
+<ul>
+<li>Existence features - \(\phi_{J,c} = max(z_{j,c}, j \in J)\)</li>
+<li>Conjuction features - \(\phi_{J_1,c_1;J_2,c_2} = \phi_{J_1,c_1}(z)\phi_{J_2,c_2}(z)\)</li>
+
+</ul>
+
+</section>
+<section id="slide-org47b823e">
+<h3 id="org47b823e">Existence Features</h3>
+<p>
+Indicate whether or not an instance from a given category is centered anywhere in a given set of cells.
+</p>
+
+<p>
+\(\phi_{J,c}(z) = max \left( z_{j,c}, j \in J \right)\)
+</p>
+
+<p>
+Considered at the three levels of granularity.
+</p>
+
+</section>
+<section id="slide-orgb22831c">
+<h3 id="orgb22831c">Conjunction Features</h3>
+<p>
+Products of two middle-level existence features: \[\phi_{J_1, c_1, J_2, c_2}\left( z \right) = \phi_{J_1, c_1} \left( z \right) \phi_{J_2, c_2} \left( z \right)\] that signal the co-occurence of those features of interest.
+</p>
+
+<p>
+To reduce complexity, only considered if annocells are "close enough".
+</p>
+
+</section>
+<section id="slide-orgcb912b5">
+<h3 id="orgcb912b5">Feature Examples</h3>
+
+<div class="figure">
+<p><img src="./features.png" alt="features.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org2ccf935">
+<h3 id="org2ccf935">Learning the prior model</h3>
+<p>
+Learning the model requires a very large number of annotated examples. The authors had 3,000 images, but it was insufficient. They built a scene generation model to create an unlimited set of new synthetic scenes with annotations.
+</p>
+
+</section>
+</section>
+<section>
+<section id="slide-orgcd5891f">
+<h2 id="orgcd5891f">Scene Generation Model</h2>
+<p>
+The generative model is modeled simply by a Markov Random Field. First, they create spontaneus instances by placing some objects randomly in the scene. Then they allow these placements to generate ancillary objects, whose type and location are drawn from the conditional distribution of the initial object. This process terminates when no children are generated, or an upper limit has been reached.
+</p>
+
+</section>
+<section id="slide-org63b08cb">
+<h3 id="org63b08cb">Simple Master Graph</h3>
+
+<div class="figure">
+<p><img src="./mastergraph.png" alt="mastergraph.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-orgab1f8b9">
+<h3 id="orgab1f8b9">MRF Representation</h3>
+
+<div class="figure">
+<p><img src="./settinggraph.png" alt="settinggraph.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org99a683b">
+<h3 id="org99a683b">Visualizations</h3>
+
+<div class="figure">
+<p><img src="./realtable.png" alt="realtable.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-orge5d0b8d">
+<h3 id="orge5d0b8d">Posterior Sample</h3>
+
+<div class="figure">
+<p><img src="./posttable.png" alt="posttable.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+
+</section>
+<section id="slide-orgde8cd6b">
+<h3 id="orgde8cd6b">Learning and sampling the MRF</h3>
+<p>
+The weights of the edges are learned using the Monte Carlo version of the Stochastic Expectation-Maximization algorithm.
+</p>
+
+<p>
+The sampling algorithm is based on based on a Metropolic-Hastings sampling strategy conditional on a given scene geometry.
+</p>
+
+</section>
+<section id="slide-org672a062">
+<h3 id="org672a062">Conditional Sampling Assumptions</h3>
+<p>
+The authors worked under the assumption that the classifiers are independent given \((Z, S, W)\), the image, scene, and camera properties. As well as for a given query, the condition distribution of \(X_q\) given these variables depends onl y on \(Y_q\), the set of annobits for that query.
+</p>
+
+</section>
+</section>
+<section>
+<section id="slide-orgdb28240">
+<h2 id="orgdb28240">Classifiers and Data Model</h2>
+<p>
+Trained three deep CNNs:
+</p>
+<ul>
+<li>CatNet: object classification</li>
+<li>ScaleNet: estimate the size of detected object instances</li>
+<li>SceneNet: estimate the scene geometry in a given image</li>
+
+</ul>
+
+</section>
+<section id="slide-orga20d024">
+<h3 id="orga20d024">Dirichlet Models</h3>
+<p>
+From the output of the first CNNs, the authors fit a Dirichlet model, assumed to be independent of the annocell, for \[P \left( x^{type} | y^{type} \right)\] where type is either category or scale models.
+</p>
+
+</section>
+<section id="slide-org953fa45">
+<h3 id="org953fa45">CatNet</h3>
+<p>
+For a given cell, returns a softmax vector of scores \(X^{cat}\) corresponding to a proportional confidence level about the presence of at least one object from the categories considered.
+</p>
+
+<p>
+Nonnegative and sum to 1, but are not probabilities of existence, since the events can co-occur.
+</p>
+
+</section>
+<section id="slide-orgf529787">
+<h3 id="orgf529787">ScaleNet</h3>
+<p>
+The unit interval is broken into several regions, and the CNN estimates the likelihood that a given object's size falls into one of the regions.
+</p>
+
+<p>
+An object's scale is defined to be the ratio of its longest side to the patch size.
+</p>
+
+</section>
+<section id="slide-orgba54509">
+<h3 id="orgba54509">Dirichlet Model Comparison - CatNet</h3>
+
+<div class="figure">
+<p><img src="./catnet.png" alt="catnet.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-orgf4232ad">
+<h3 id="orgf4232ad">Dirichlet Model Comparison - ScaleNet</h3>
+
+<div class="figure">
+<p><img src="./scalenet.png" alt="scalenet.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-orgaebff6a">
+<h3 id="orgaebff6a">CatNet Performance</h3>
+
+<div class="figure">
+<p><img src="./catnetres.png" alt="catnetres.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org69a5696">
+<h3 id="org69a5696">ScaleNet Performance</h3>
+
+<div class="figure">
+<p><img src="./scalenetres.png" alt="scalenetres.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-org672ab0e">
+<h3 id="org672ab0e">SceneNet Performance</h3>
+
+<div class="figure">
+<p><img src="./scenenetres.png" alt="scenenetres.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+</section>
+<section>
+<section id="slide-orgf59a346">
+<h2 id="orgf59a346">IP Experiments</h2>
+<ul>
+<li>Sample 10 homographies consistent with the detected table surface</li>
+<li>Compute the weights \(P(Y^{cat}_A = y | E_{k-1})\) by sampling</li>
+<li>Calculate the entropies of the Dirichlet dist. based on posterior samples</li>
+
+</ul>
+
+</section>
+<section id="slide-org323aea1">
+<h3 id="org323aea1">What happens during an iteration</h3>
+<p>
+At each step of IP, two most informative questions corresponding to annobits with maximum mutual informations were asked, i.e., two patches were processed by CNNs.
+</p>
+
+</section>
+<section id="slide-org302efad">
+<h3 id="org302efad">Rough Process</h3>
+<ul>
+<li>Patches selected later are usually from the finer levels
+<ul>
+<li>Generally coarse-to-fine processing</li>
+
+</ul></li>
+<li>Compltelely plausible and does go back and forth between coarse and fine levels
+<ul>
+<li>Can think of this as analyzing informative regions of a scene</li>
+<li>Getting more details and moving along somewhere else</li>
+
+</ul></li>
+
+</ul>
+
+</section>
+<section id="slide-orgf8e9949">
+<h3 id="orgf8e9949">Main Advantage of IP</h3>
+<p>
+The IP selection criteria tries to strike a tradeoff between the information gain of questions and the accuracy of the classifier at providing an answer to them.
+</p>
+
+</section>
+<section id="slide-org48f784a">
+<h3 id="org48f784a">Information of Selected Questions</h3>
+
+<div class="figure">
+<p><img src="./selectedentropy.png" alt="selectedentropy.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+
+</section>
+<section id="slide-orgc6847b5">
+<h3 id="orgc6847b5">Precision Recall Curves</h3>
+
+<div class="figure">
+<p><img src="./precisionrecall.png" alt="precisionrecall.png" style="display: block; margin-left: auto; margin-right: auto;" />
+</p>
+</div>
+</section>
+</section>
+</div>
+</div>
+<script src="http://cdn.jsdelivr.net/reveal.js/3.0.0/lib/js/head.min.js"></script>
+<script src="http://cdn.jsdelivr.net/reveal.js/3.0.0/js/reveal.js"></script>
+
+<script>
+// Full list of configuration options available here:
+// https://github.com/hakimel/reveal.js#configuration
+Reveal.initialize({
+
+controls: true,
+progress: true,
+history: false,
+center: true,
+slideNumber: 'c',
+rollingLinks: false,
+keyboard: true,
+overview: true,
+
+theme: Reveal.getQueryHash().theme, // available themes are in /css/theme
+transition: Reveal.getQueryHash().transition || 'default', // default/cube/page/concave/zoom/linear/fade/none
+transitionSpeed: 'default',
+multiplex: {
+    secret: '', // null if client
+    id: '', // id, obtained from socket.io server
+    url: '' // Location of socket.io server
+},
+
+// Optional libraries used to extend on reveal.js
+dependencies: [
+ { src: 'http://cdn.jsdelivr.net/reveal.js/3.0.0/lib/js/classList.js', condition: function() { return !document.body.classList; } },
+ { src: 'http://cdn.jsdelivr.net/reveal.js/3.0.0/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'http://cdn.jsdelivr.net/reveal.js/3.0.0/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'http://cdn.jsdelivr.net/reveal.js/3.0.0/plugin/zoom-js/zoom.js', async: true, condition: function() { return !!document.body.classList; } },
+ { src: 'http://cdn.jsdelivr.net/reveal.js/3.0.0/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }]
+});
+</script>
+</body>
+</html>
