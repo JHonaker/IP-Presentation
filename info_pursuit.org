@@ -1,0 +1,257 @@
+#+LATEX_CLASS: beamer
+#+REVEAL_ROOT: http://cdn.jsdelivr.net/reveal.js/3.0.0/
+#+OPTIONS: reveal_title_slide:nil toc:nil num:nil
+#+REVEAL_THEME: black
+#+REVEAL_EXTRA_CSS: pres.css
+
+
+* Information Pursuit
+
+#+ATTR_HTML:  :style text-align:center
+A Bayesian Framework for Sequential Scene Parsing
+#+ATTR_HTML:  :style text-align:center
+by Jahngiri et al.
+
+** Overall Goal
+
+   Develop a goal for scene parsing that incorporates expected contextual information during object classification
+
+* The Problem
+
+  There is a lot of discarded information that is naturally modelled by a Bayesian framework with prior information.
+
+** Dining Tables
+
+   For instance, consider a dining table. There are several collections of objects that occur together and have regular patterns to their relationship:
+
+   - Place settings often include a plate, fork, knife, spoon, and glass 
+   - The utinsels are more often locally parallel to one another than in some random configuration
+
+** Benefits of Contextual Information
+
+   - Can help recognize items that we would expect, but may be in strange configurations
+   - Helps reduce inconsistencies and provides more coherent interpretations
+
+* Information Pursuit
+
+  The method is a hybrid of a learning-based and model-based approach.
+
+  Images patches are parsed using DNNs which output a variety of classifiers. We use these classifiers to build a (Dirichlet) model to look at the posterior distribution of the classifiers after considering the prior information.
+
+** Intuitive Approach
+
+   The Information Pursuit strategy can be intuitively thought of as a more complex analgoue of the game /20 Questions/.
+
+   The goal of the strategy is to sequentially query image patches in an order that results in a large decrease of (Shannon) entropy while balancing the likelihood that the query can be successfully answered.
+
+*** Example Query
+
+    In /20 Questions/ I might ask you if you the person under consideration is Male/Female first, because it leads to a large reduction in the possible classes while being simultaneously easy to answer accurately.
+
+    I could also ask you if they were born in September. If I knew the birthdates of a number of celebrities, this would be helpful. However, it is highly unlikely that the person answer the questions would know the answer.
+
+* Terminology
+
+  The goal is to reconstruct as much information about $Z \in \mathcal{Z}$ from the observation of $I$.
+
+  - $\mathcal{Z}$ - The set of scene interpretations
+  - $I$ - a 2D image of the scene
+  - $W$ - Other, typically unobserved variables, such as the camera's parameters
+
+
+** Queries
+
+   Information about $Z$ is supplied by noisy queries from the specified set of queries, $\mathcal{Q}$. $Y_q, q \in \mathcal{Q}$ is the answer to these queries, and is determined by $Z$ and $W$, $Y_q = f_q \left( Z, W \right)$.
+
+$Y_q$ provides a small amount of information about $Z$, and is referred to as an "annobit".
+
+** Examples of Annobits
+
+- Scene Context - Full scene labels such as "indoor", "outdoor", "street". Not used in this paper since all examples are of indoor table settings.
+- Part-of Descriptors - Indicate whether or not one image region is a subset of another, e.g. whether an image patch is a part of a table.
+- Existence - Indicate the presence or absence of object instances inside the region. The most used example in this paper.
+
+** Classifiers
+
+   The states of the annobits are progressively estimated from a matched family of image-based predictors, $X_q = h_q \left( I \right)$. We also assume that $Y_\mathcal{Q}$ is sufficient for $X_\mathcal{Q}$, in the sense that $$P \left(X_\mathcal{Q} | Z, W \right) = P \left( X_\mathcal{Q} | Y_\mathcal{Q} \right)$$
+
+* IP Strategy
+
+  Let $(q_1, ..., q_k)$ be an ordered sequence of the first k distinct queries with answers $(x_1, ..., x_k)$. The event, $$\mathbf{E}_k = \left\{ X_{q_1} = x_1, ..., X_{q_k} = x_k \right\}.$$
+
+  The IP strategy is defined recursively: $$q_1 = argmax_{q \in \mathcal{Q}} \mathcal{I} (X_q, Y_\mathcal{Q}), q_k = argmax_{q \in \mathcal{Q}} \mathcal{I} (X_q, Y_\mathcal{Q} | \mathbf{E}_{k-1}).$$
+
+  Where $\mathcal{I}$ is the mutual information determined by the joint distribution of $X_q$ and $Y_\mathcal{Q}$.
+
+** Selection Criteria
+
+   $$\mathcal{I} (X_q, Y_\mathcal{Q} | \mathbf{E}_{k-1}) = H(X_q | \mathbf{E}_{k-1}) - H(X_q | Y_\mathcal{Q}, \mathbf{E}_{k-1})$$
+
+   This implies the next question should be chosen such that:
+   1. $H(X_q | \mathbf{E}_{k-1})$ is large, so that its answer is as unpredictable as possible given the current evidence.
+   2. $H(X_q | Y_\mathcal{Q}, \mathbf{E}_{k-1})$ is small, so that $X_q$ is predicatble given the ground truth (i.e., $X_q$ is a "good" classifier).
+
+   The two criteria are balanced though, so one could accept a relatively poor classifier if it is highly unpredictable.
+
+** Annocells
+
+   The image is chopped into several hierarchical layers into chunks called annocells. Each cell is given its own index and associated set of annobits and classifiers.
+
+** Annocells
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./annocells.png]]
+
+** Prior Model
+
+The scene model, $P(Z|S)$, is conditioned on $S$, the projective reference plane for the 3D table representation in the image plane. The representative plane is partioned into small cells (5cm by 5cm) and the distribution of $Z_i = (C_i, L_i)$, class and location, is discretized on this grid. The discretized version of $Z_{j,c}$ is equal to 1 iff an object of category c is centered in cell j.
+
+** Discretized Grid
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./tablemesh.png]]
+
+** Scene Model Distribution
+
+   The scene model follows a Gibbs distribution, $$p(z) \; \alpha \; exp(\mathbf{\lambda} \phi (z)),$$ where $\phi(z)$ represents two types of features:
+
+   - Existence features - $\phi_{J,c} = max(z_{j,c}, j \in J)$
+   - Conjuction features - $\phi_{J_1,c_1;J_2,c_2} = \phi_{J_1,c_1}(z)\phi_{J_2,c_2}(z)$
+
+** Existence Features
+
+   Indicate whether or not an instance from a given category is centered anywhere in a given set of cells.
+
+   $\phi_{J,c}(z) = max \left( z_{j,c}, j \in J \right)$
+
+   Considered at the three levels of granularity.
+
+** Conjunction Features
+
+   Products of two middle-level existence features: $$\phi_{J_1, c_1, J_2, c_2}\left( z \right) = \phi_{J_1, c_1} \left( z \right) \phi_{J_2, c_2} \left( z \right)$$ that signal the co-occurence of those features of interest.
+
+   To reduce complexity, only considered if annocells are "close enough".
+
+** Feature Examples
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./features.png]]
+
+** Learning the prior model
+
+   Learning the model requires a very large number of annotated examples. The authors had 3,000 images, but it was insufficient. They built a scene generation model to create an unlimited set of new synthetic scenes with annotations.
+
+* Scene Generation Model
+
+  The generative model is modeled simply by a Markov Random Field. First, they create spontaneus instances by placing some objects randomly in the scene. Then they allow these placements to generate ancillary objects, whose type and location are drawn from the conditional distribution of the initial object. This process terminates when no children are generated, or an upper limit has been reached.
+
+** Simple Master Graph
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./mastergraph.png]]
+
+** MRF Representation
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./settinggraph.png]]
+
+** Visualizations
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./realtable.png]]
+
+** Posterior Sample
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+[[./posttable.png]]
+
+
+** Learning and sampling the MRF
+
+   The weights of the edges are learned using the Monte Carlo version of the Stochastic Expectation-Maximization algorithm.
+
+   The sampling algorithm is based on based on a Metropolic-Hastings sampling strategy conditional on a given scene geometry.
+
+** Conditional Sampling Assumptions
+
+   The authors worked under the assumption that the classifiers are independent given $(Z, S, W)$, the image, scene, and camera properties. As well as for a given query, the condition distribution of $X_q$ given these variables depends onl y on $Y_q$, the set of annobits for that query.
+
+* Classifiers and Data Model
+
+  Trained three deep CNNs:
+  - CatNet: object classification
+  - ScaleNet: estimate the size of detected object instances
+  - SceneNet: estimate the scene geometry in a given image
+ 
+** Dirichlet Models
+
+   From the output of the first CNNs, the authors fit a Dirichlet model, assumed to be independent of the annocell, for $$P \left( x^{type} | y^{type} \right)$$ where type is either category or scale models.
+
+** CatNet
+
+   For a given cell, returns a softmax vector of scores $X^{cat}$ corresponding to a proportional confidence level about the presence of at least one object from the categories considered.
+
+   Nonnegative and sum to 1, but are not probabilities of existence, since the events can co-occur.
+
+** ScaleNet
+
+   The unit interval is broken into several regions, and the CNN estimates the likelihood that a given object's size falls into one of the regions.
+
+   An object's scale is defined to be the ratio of its longest side to the patch size.
+
+** Dirichlet Model Comparison - CatNet
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./catnet.png]]
+
+** Dirichlet Model Comparison - ScaleNet
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./scalenet.png]]
+
+** CatNet Performance
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./catnetres.png]]
+
+** ScaleNet Performance
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./scalenetres.png]]
+
+** SceneNet Performance
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./scenenetres.png]]
+
+* IP Experiments
+
+  - Sample 10 homographies consistent with the detected table surface
+  - Compute the weights $P(Y^{cat}_A = y | E_{k-1})$ by sampling
+  - Calculate the entropies of the Dirichlet dist. based on posterior samples
+
+** What happens during an iteration
+
+   At each step of IP, two most informative questions corresponding to annobits with maximum mutual informations were asked, i.e., two patches were processed by CNNs.
+
+** Rough Process
+
+   - Patches selected later are usually from the finer levels
+     - Generally coarse-to-fine processing
+   - Compltelely plausible and does go back and forth between coarse and fine levels
+     - Can think of this as analyzing informative regions of a scene
+     - Getting more details and moving along somewhere else
+
+** Main Advantage of IP
+
+   The IP selection criteria tries to strike a tradeoff between the information gain of questions and the accuracy of the classifier at providing an answer to them.
+
+** Information of Selected Questions
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./selectedentropy.png]]
+
+** Precision Recall Curves
+
+#+ATTR_HTML:  :style display: block; margin-left: auto; margin-right: auto;
+   [[./precisionrecall.png]]
